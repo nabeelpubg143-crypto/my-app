@@ -1,118 +1,180 @@
+import asyncio
+from typing import Dict, List, Optional
 from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from binance.client import Client
-import os
+import random
 
-app = FastAPI(title="Binance Advanced Grid & Multi-Strategy Bot Engine")
+app = FastAPI(title="Binance Pro Trading Dashboard")
 
-class APIKeyCredentials(BaseModel):
-    api_key: str
-    api_secret: str
-    testnet: bool = True
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
-class BotConfig(BaseModel):
-    trading_mode: str          # 'demo' or 'live'
-    symbol: str                # 'BTCUSDT', 'ETHUSDT', 'PAXGUSDT'
-    strategy: str              # 'grid', 'combo', 'smc', 'silver_bullet', 'dca'
-    total_investment: float = 1000.0
-    lower_price: float = 50000.0
-    upper_price: float = 70000.0
-    grids: int = 10
-
-bot_state = {
-    "is_running": False,
-    "mode": "demo",
-    "strategy": None,
-    "symbol": None,
-    "client": None,
-    "active_orders": [],
-    "position": {
-        "entry_price": 0.0,
-        "market_price": 0.0,
-        "pnl": 0.0,
-        "pnl_percent": 0.0
-    }
+# Shared Memory Data Store
+MARKET_PRICES = {
+    "BTCUSDT": 91250.00,
+    "ETHUSDT": 3340.50,
+    "XAUUSDT": 2720.80
 }
 
-@app.get("/", response_class=HTMLResponse)
-def serve_dashboard():
-    if os.path.exists("index.html"):
-        with open("index.html", "r", encoding="utf-8") as f:
-            return f.read()
-    return "<h1>index.html not found!</h1>"
+# State for Manual Positions & Active Bots
+active_positions = []
+order_history = []
+active_bots = {}
 
-@app.post("/api/connect")
-def connect_binance(creds: APIKeyCredentials):
-    try:
-        client = Client(creds.api_key, creds.api_secret, testnet=creds.testnet)
-        bot_state["client"] = client
-        return {"status": "success", "message": "Live Binance Account Connected!"}
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Live Connection Failed: {str(e)}")
+class PositionRequest(BaseModel):
+    symbol: str
+    side: str  # "BUY" or "SELL"
+    order_type: str  # "MARKET" or "LIMIT"
+    price: Optional[float] = None
+    amount_usdt: float
+    leverage: int = 10
 
-@app.post("/api/start-bot")
-def start_bot(config: BotConfig):
-    if config.trading_mode == "live" and not bot_state["client"]:
-        raise HTTPException(status_code=400, detail="Live trading ke liye Binance API Keys connect karna zaroori hai.")
+class BotStartRequest(BaseModel):
+    symbol: str
+    strategy: str  # "Grid Trading", "Institutional Confluence (SMC)", "ICT Silver Bullet"
+    lower_price: float
+    upper_price: float
+    grid_count: int
+    investment: float
 
-    bot_state["is_running"] = True
-    bot_state["mode"] = config.trading_mode
-    bot_state["strategy"] = config.strategy
-    bot_state["symbol"] = config.symbol
+@app.get("/api/prices")
+def get_prices():
+    # Simulate slight market price movement like live Binance ticker
+    for symbol in MARKET_PRICES:
+        change = random.uniform(-0.15, 0.15) / 100.0
+        MARKET_PRICES[symbol] = round(MARKET_PRICES[symbol] * (1 + change), 2)
+    return MARKET_PRICES
 
-    # Fake Market Calculation for Visualizing Position
-    entry_p = (config.lower_price + config.upper_price) / 2
-    market_p = entry_p * 1.015  # Simulated +1.5% price movement
-    pnl_val = (config.total_investment * 0.015)
+@app.post("/api/position/open")
+def open_position(req: PositionRequest):
+    current_price = MARKET_PRICES.get(req.symbol, 1000.0)
+    entry_price = req.price if req.order_type == "LIMIT" and req.price else current_price
     
-    bot_state["position"] = {
-        "entry_price": entry_p,
-        "market_price": market_p,
-        "pnl": pnl_val,
-        "pnl_percent": 1.5
+    pos_id = f"POS-{random.randint(1000, 9999)}"
+    position = {
+        "id": pos_id,
+        "symbol": req.symbol,
+        "side": req.side,
+        "type": req.order_type,
+        "entry_price": entry_price,
+        "amount_usdt": req.amount_usdt,
+        "leverage": req.leverage,
+        "size": round((req.amount_usdt * req.leverage) / entry_price, 4),
+        "status": "OPEN" if req.order_type == "MARKET" else "PENDING_LIMIT"
     }
+    active_positions.append(position)
+    order_history.append({
+        "id": pos_id,
+        "symbol": req.symbol,
+        "type": f"MANUAL_{req.side}_{req.order_type}",
+        "price": entry_price,
+        "amount": req.amount_usdt,
+        "status": "EXECUTED" if req.order_type == "MARKET" else "OPEN"
+    })
+    return {"status": "SUCCESS", "position": position}
 
-    # Grid Orders Calculation
-    orders = []
-    if config.strategy in ["grid", "combo"]:
-        price_step = (config.upper_price - config.lower_price) / config.grids
-        per_grid_amount = config.total_investment / config.grids
-        
-        for i in range(config.grids + 1):
-            grid_price = config.lower_price + (i * price_step)
-            order_type = "BUY" if grid_price < entry_p else "SELL"
-            orders.append({
-                "grid_num": i + 1,
-                "type": order_type,
-                "price": grid_price,
-                "amount": per_grid_amount
+@app.post("/api/bot/start")
+def start_bot(req: BotStartRequest):
+    step = (req.upper_price - req.lower_price) / req.grid_count
+    grids = []
+    
+    for i in range(req.grid_count + 1):
+        grid_price = round(req.lower_price + (i * step), 2)
+        current_p = MARKET_PRICES.get(req.symbol, grid_price)
+        side = "BUY" if grid_price < current_p else "SELL"
+        grids.append({
+            "grid_num": i + 1,
+            "price": grid_price,
+            "side": side,
+            "qty": round((req.investment / req.grid_count) / grid_price, 4),
+            "status": "OPEN"
+        })
+
+    bot_info = {
+        "symbol": req.symbol,
+        "strategy": req.strategy,
+        "lower_price": req.lower_price,
+        "upper_price": req.upper_price,
+        "grid_count": req.grid_count,
+        "investment": req.investment,
+        "avg_entry": round((req.lower_price + req.upper_price) / 2, 2),
+        "grids": grids,
+        "status": "RUNNING",
+        "realized_pnl": 0.00
+    }
+    active_bots[req.symbol] = bot_info
+    return {"status": "SUCCESS", "bot": bot_info}
+
+@app.post("/api/bot/stop/{symbol}")
+def stop_bot(symbol: str):
+    if symbol in active_bots:
+        active_bots[symbol]["status"] = "STOPPED"
+        del active_bots[symbol]
+        return {"status": "SUCCESS", "message": f"Bot for {symbol} stopped."}
+    raise HTTPException(status_code=404, detail="Bot not found")
+
+@app.get("/api/dashboard/summary/{symbol}")
+def get_dashboard_summary(symbol: str):
+    market_price = MARKET_PRICES.get(symbol, 0.0)
+    bot = active_bots.get(symbol, None)
+    
+    # Calculate Live UnPnL for Manual Positions
+    positions_summary = []
+    for pos in active_positions:
+        if pos["symbol"] == symbol and pos["status"] == "OPEN":
+            if pos["side"] == "BUY":
+                pnl = (market_price - pos["entry_price"]) * pos["size"]
+            else:
+                pnl = (pos["entry_price"] - market_price) * pos["size"]
+            
+            pnl_pct = (pnl / pos["amount_usdt"]) * 100
+            positions_summary.append({
+                **pos,
+                "current_price": market_price,
+                "pnl": round(pnl, 2),
+                "pnl_pct": round(pnl_pct, 2)
             })
-        
-    bot_state["active_orders"] = orders
+
+    # Bot Grid Updates
+    bot_summary = None
+    if bot:
+        grid_pnl = 0.0
+        for g in bot["grids"]:
+            if g["side"] == "BUY" and market_price <= g["price"]:
+                g["status"] = "FILLED"
+            elif g["side"] == "SELL" and market_price >= g["price"]:
+                g["status"] = "FILLED"
+            
+            if g["status"] == "FILLED":
+                grid_pnl += random.uniform(0.5, 2.5) # Simulated Grid Arbitrage Profit
+
+        bot_summary = {
+            "symbol": bot["symbol"],
+            "strategy": bot["strategy"],
+            "status": bot["status"],
+            "investment": bot["investment"],
+            "avg_entry": bot["avg_entry"],
+            "grid_count": bot["grid_count"],
+            "realized_pnl": round(grid_pnl, 2),
+            "grids": bot["grids"]
+        }
 
     return {
-        "status": "started",
-        "message": f"Bot Active on {config.symbol}",
-        "config": config,
-        "position": bot_state["position"],
-        "grid_orders": orders
+        "symbol": symbol,
+        "market_price": market_price,
+        "active_positions": positions_summary,
+        "bot": bot_summary,
+        "history": [h for h in order_history if h["symbol"] == symbol]
     }
 
-@app.post("/api/stop-bot")
-def stop_bot():
-    bot_state["is_running"] = False
-    bot_state["active_orders"] = []
-    return {"status": "stopped", "message": "Bot Execution Halted Safely."}
-
-@app.get("/api/status")
-def get_status():
-    return {
-        "is_running": bot_state["is_running"],
-        "mode": bot_state["mode"],
-        "strategy": bot_state["strategy"],
-        "symbol": bot_state["symbol"],
-        "position": bot_state["position"],
-        "active_orders": bot_state["active_orders"]
-    }
-    
+@app.get("/", response_class=HTMLResponse)
+def index():
+    with open("index.html", "r", encoding="utf-8") as f:
+        return f.read()
