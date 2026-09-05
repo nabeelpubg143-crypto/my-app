@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Binance Trading & Demo Bot Dashboard</title>
+    <title>Binance Advanced Trading Dashboard</title>
     <style>
         * { box-sizing: border-box; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         body { background-color: #0b0e11; color: #eaecef; margin: 0; padding: 20px; }
@@ -20,62 +20,56 @@
         .status-badge { display: inline-block; padding: 5px 10px; border-radius: 4px; font-weight: bold; }
         .status-active { background: #0ecb81; color: black; }
         .status-inactive { background: #f6465d; color: white; }
-        .mode-demo { background: #2b6cb0; color: white; }
-        .mode-live { background: #d69e2e; color: black; }
+        
+        /* Grid Order Book Table Styling */
+        table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+        th, td { padding: 10px; text-align: left; border-bottom: 1px solid #2b313a; }
+        th { color: #848e9c; background: #181a20; }
+        .buy-text { color: #0ecb81; font-weight: bold; }
+        .sell-text { color: #f6465d; font-weight: bold; }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>🚀 Binance Multi-Strategy Trading & Demo Bot</h1>
+        <h1>🚀 Binance Pro Trading & Grid Bot</h1>
 
-        <!-- Mode Selector Card -->
         <div class="card">
-            <h2>1. Select Trading Mode</h2>
+            <h2>1. Account & Pair Selection</h2>
             <div class="form-group">
-                <label>Account Mode</label>
-                <select id="tradingMode" onchange="toggleModeSection()">
-                    <option value="demo">🧪 Demo Mode (Paper Trading - Risk Free $10,000)</option>
-                    <option value="live">⚡ Live Binance API Mode (Real Trading)</option>
+                <label>Trading Mode</label>
+                <select id="tradingMode">
+                    <option value="demo">🧪 Demo Mode (Risk Free $10,000 USDT)</option>
+                    <option value="live">⚡ Live Binance API Mode</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Select Trading Pair</label>
+                <select id="symbol">
+                    <option value="BTCUSDT">BTC/USDT (Bitcoin)</option>
+                    <option value="ETHUSDT">ETH/USDT (Ethereum)</option>
+                    <option value="PAXGUSDT">XAU/USDT (Gold Spot / Pax Gold)</option>
                 </select>
             </div>
         </div>
 
-        <!-- API Connection Card (Only for Live Mode) -->
-        <div class="card" id="apiCard" style="display: none;">
-            <h2>2. Binance API Credentials (Live Trading)</h2>
-            <div class="form-group">
-                <label>API Key</label>
-                <input type="text" id="apiKey" placeholder="Enter Binance API Key">
-            </div>
-            <div class="form-group">
-                <label>API Secret Key</label>
-                <input type="password" id="apiSecret" placeholder="Enter Binance Secret Key">
-            </div>
-            <button onclick="connectAPI()">Connect Live Binance API</button>
-        </div>
-
-        <!-- Strategy Selector Card -->
         <div class="card">
-            <h2>3. Strategy & Bot Configuration</h2>
+            <h2>2. Bot Configuration</h2>
             <div class="form-group">
-                <label>Trading Pair</label>
-                <input type="text" id="symbol" value="BTCUSDT">
-            </div>
-            <div class="form-group">
-                <label>Select Strategy</label>
-                <select id="strategy" onchange="toggleGridFields()">
-                    <option value="smc">Institutional Confluence (SMC - FVG/OB/Fib)</option>
-                    <option value="silver_bullet">ICT Silver Bullet Strategy</option>
-                    <option value="dca">DCA Bot (Dollar-Cost Averaging)</option>
+                <label>Strategy Type</label>
+                <select id="strategy" onchange="toggleFields()">
                     <option value="grid">Grid Trading Bot</option>
-                    <option value="combo">Combo Bot (Grid + DCA Integration)</option>
+                    <option value="combo">Combo Bot (Grid + DCA)</option>
+                    <option value="smc">Institutional SMC (FVG/OB/Fib)</option>
+                    <option value="silver_bullet">ICT Silver Bullet Strategy</option>
+                    <option value="dca">DCA Bot</option>
                 </select>
             </div>
-            <div class="form-group">
-                <label>Investment Amount Per Trade (USDT)</label>
-                <input type="number" id="amount" value="100">
-            </div>
-            <div id="gridFields" style="display: none;">
+
+            <div id="gridInputs">
+                <div class="form-group">
+                    <label>Total Grid Investment (USDT)</label>
+                    <input type="number" id="totalInvestment" value="1000">
+                </div>
                 <div class="form-group">
                     <label>Lower Price Limit</label>
                     <input type="number" id="lowerPrice" placeholder="e.g. 50000">
@@ -84,49 +78,47 @@
                     <label>Upper Price Limit</label>
                     <input type="number" id="upperPrice" placeholder="e.g. 70000">
                 </div>
+                <div class="form-group">
+                    <label>Number of Grids (Lines)</label>
+                    <input type="number" id="gridsCount" value="10">
+                </div>
             </div>
-            <button onclick="startBot()">Launch Trading Bot</button>
+
+            <button onclick="startBot()">Launch Bot</button>
             <button class="btn-stop" onclick="stopBot()">Stop Bot</button>
         </div>
 
-        <!-- System Status Panel -->
         <div class="card">
-            <h2>4. Live Dashboard Status</h2>
+            <h2>3. Running Bot Live Details (Binance View)</h2>
             <p>Bot Status: <span id="botStatus" class="status-badge status-inactive">INACTIVE</span></p>
-            <p>Active Mode: <strong id="activeMode" class="status-badge mode-demo">DEMO MODE</strong></p>
-            <p>Demo Virtual Balance: <strong id="demoBalance" style="color: #0ecb81;">$10,000.00 USDT</strong></p>
-            <p>Active Strategy: <strong id="activeStrategy">None</strong></p>
-            <p>Monitored Symbol: <strong id="activeSymbol">None</strong></p>
-            <p id="logMessage" style="color: #f0b90b;"></p>
+            <p>Active Pair: <strong id="activePair" style="color: #f0b90b;">-</strong></p>
+            <p>Total Grid Investment: <strong id="activeInv">$0.00 USDT</strong></p>
+            <p>Buy Orders Active: <strong class="buy-text" id="buyCount">0</strong> | Sell Orders Active: <strong class="sell-text" id="sellCount">0</strong></p>
+
+            <h3>📋 Placed Grid Orders & Levels</h3>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Grid Line #</th>
+                        <th>Type</th>
+                        <th>Price Level</th>
+                        <th>Order Amount</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody id="gridOrderTable">
+                    <tr><td colspan="5" style="text-align:center; color:#848e9c;">No Active Grid Bot Running</td></tr>
+                </tbody>
+            </table>
         </div>
     </div>
 
     <script>
         const API_URL = "/api";
 
-        function toggleModeSection() {
-            const mode = document.getElementById("tradingMode").value;
-            const apiCard = document.getElementById("apiCard");
-            apiCard.style.display = (mode === "live") ? "block" : "none";
-        }
-
-        function toggleGridFields() {
+        function toggleFields() {
             const strat = document.getElementById("strategy").value;
-            const gridFields = document.getElementById("gridFields");
-            gridFields.style.display = (strat === "grid" || strat === "combo") ? "block" : "none";
-        }
-
-        async function connectAPI() {
-            const apiKey = document.getElementById("apiKey").value;
-            const apiSecret = document.getElementById("apiSecret").value;
-
-            const res = await fetch(`${API_URL}/connect`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ api_key: apiKey, api_secret: apiSecret, testnet: true })
-            });
-            const data = await res.json();
-            alert(data.message || data.detail);
+            document.getElementById("gridInputs").style.display = (strat === "grid" || strat === "combo") ? "block" : "none";
         }
 
         async function startBot() {
@@ -134,9 +126,10 @@
                 trading_mode: document.getElementById("tradingMode").value,
                 symbol: document.getElementById("symbol").value,
                 strategy: document.getElementById("strategy").value,
-                amount: parseFloat(document.getElementById("amount").value),
-                lower_price: parseFloat(document.getElementById("lowerPrice").value) || null,
-                upper_price: parseFloat(document.getElementById("upperPrice").value) || null
+                total_investment: parseFloat(document.getElementById("totalInvestment").value) || 100,
+                lower_price: parseFloat(document.getElementById("lowerPrice").value) || 0,
+                upper_price: parseFloat(document.getElementById("upperPrice").value) || 0,
+                grids: parseInt(document.getElementById("gridsCount").value) || 10
             };
 
             const res = await fetch(`${API_URL}/start-bot`, {
@@ -146,42 +139,45 @@
             });
             const data = await res.json();
             if (res.ok) {
-                document.getElementById("logMessage").innerText = data.message;
-                updateStatus();
+                renderGridDetails(data.grid_orders, config);
             } else {
                 alert(data.detail);
             }
         }
 
-        async function stopBot() {
-            const res = await fetch(`${API_URL}/stop-bot`, { method: "POST" });
-            const data = await res.json();
-            document.getElementById("logMessage").innerText = data.message;
-            updateStatus();
+        function renderGridDetails(orders, config) {
+            document.getElementById("botStatus").innerText = "RUNNING";
+            document.getElementById("botStatus").className = "status-badge status-active";
+            document.getElementById("activePair").innerText = config.symbol;
+            document.getElementById("activeInv").innerText = `$${config.total_investment} USDT`;
+
+            let buyC = 0, sellC = 0;
+            let rowsHtml = "";
+
+            orders.forEach(o => {
+                if (o.type === "BUY") buyC++; else sellC++;
+                rowsHtml += `
+                    <tr>
+                        <td>Grid #${o.grid_num}</td>
+                        <td class="${o.type === 'BUY' ? 'buy-text' : 'sell-text'}">${o.type}</td>
+                        <td>$${o.price.toFixed(2)}</td>
+                        <td>$${o.amount.toFixed(2)} USDT</td>
+                        <td><span style="color:#0ecb81;">OPEN ORDER</span></td>
+                    </tr>
+                `;
+            });
+
+            document.getElementById("buyCount").innerText = buyC;
+            document.getElementById("sellCount").innerText = sellC;
+            document.getElementById("gridOrderTable").innerHTML = rowsHtml;
         }
 
-        async function updateStatus() {
-            const res = await fetch(`${API_URL}/status`);
-            const data = await res.json();
-            
-            const badge = document.getElementById("botStatus");
-            if (data.is_running) {
-                badge.innerText = "RUNNING";
-                badge.className = "status-badge status-active";
-            } else {
-                badge.innerText = "INACTIVE";
-                badge.className = "status-badge status-inactive";
-            }
-
-            const modeBadge = document.getElementById("activeMode");
-            modeBadge.innerText = data.mode.toUpperCase() + " MODE";
-            modeBadge.className = "status-badge " + (data.mode === "demo" ? "mode-demo" : "mode-live");
-
-            document.getElementById("demoBalance").innerText = `$${data.demo_balance.toFixed(2)} USDT`;
-            document.getElementById("activeStrategy").innerText = data.strategy || "None";
-            document.getElementById("activeSymbol").innerText = data.symbol || "None";
+        async function stopBot() {
+            await fetch(`${API_URL}/stop-bot`, { method: "POST" });
+            document.getElementById("botStatus").innerText = "INACTIVE";
+            document.getElementById("botStatus").className = "status-badge status-inactive";
+            document.getElementById("gridOrderTable").innerHTML = `<tr><td colspan="5" style="text-align:center; color:#848e9c;">Bot Stopped</td></tr>`;
         }
     </script>
 </body>
 </html>
-  
