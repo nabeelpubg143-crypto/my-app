@@ -1,13 +1,12 @@
-import asyncio
 import random
-import requests
+import time
 from typing import Dict, List, Optional
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 
-app = FastAPI(title="Binance Pro Trading & AI Bot Terminal")
+app = FastAPI(title="Binance Futures Pro Multi-Bot Terminal")
 
 app.add_middleware(
     CORSMiddleware,
@@ -17,183 +16,128 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Global State
-SYSTEM_MODE = "DEMO"  # DEMO or LIVE
-DEMO_BALANCES = {"SPOT": 10000.00, "FUTURES": 10000.00}
-LIVE_API_CONFIG = {"api_key": "", "api_secret": ""}
+# 100+ Top Binance Perpetual Futures Pairs
+BINANCE_PAIRS = [
+    "BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT", "DOGEUSDT", "ADAUSDT", "AVAXUSDT", 
+    "LINKUSDT", "DOTUSDT", "SUIUSDT", "NEARUSDT", "APTUSDT", "PEPEUSDT", "SHIBUSDT", "FETUSDT",
+    "RENDERUSDT", "TIAUSDT", "INJUSDT", "ARBUSDT", "OPUSDT", "ORDIUSDT", "WIFUSDT", "BONKUSDT",
+    "FLOKIUSDT", "NOTUSDT", "RUNEUSDT", "FTMUSDT", "SEIUSDT", "STXUSDT", "GALAUSDT", "LDOUSDT",
+    "ICPUSDT", "NEARUSDT", "FILUSDT", "MATICUSDT", "ATOMUSDT", "ETCUSDT", "XLMUSDT", "BCHUSDT",
+    "LTCUSDT", "UNIUSDT", "AAVEUSDT", "MKRUSDT", "CRVUSDT", "SNXUSDT", "DYDXUSDT", "BLURUSDT",
+    "PENDLEUSDT", "ENSUSDT", "AGIXUSDT", "ARKMUSDT", "WLDUSDT", "JUPUSDT", "PYTHUSDT", "MEMEUSDT"
+]
 
-active_positions = []
-open_orders = []
-order_history = []
-active_bots = []
+BOT_CATALOG = [
+    {"id": "SMC_CONFLUENCE", "name": "1. SMC Institutional Confluence Bot", "type": "SMC / Price Action"},
+    {"id": "ICT_SILVER_BULLET", "name": "2. ICT Silver Bullet Engine", "type": "ICT / Time-based"},
+    {"id": "DYNAMIC_GRID", "name": "3. Dynamic Futures Grid Bot", "type": "Grid / Range"},
+    {"id": "TRIANGULAR_ARBITRAGE", "name": "4. Triangular Arbitrage Bot", "type": "Arbitrage"},
+    {"id": "AI_SENTIMENT", "name": "5. AI News & Sentiment Velocity Bot", "type": "AI / NLP"},
+    {"id": "MEAN_REVERSION", "name": "6. Mean Reversion & Multi-Band Bot", "type": "Mean Reversion"},
+    {"id": "TREND_EMBEDDED", "name": "7. Supertrend + EMA Cloud Follower", "type": "Trend Following"},
+    {"id": "DCA_MARTINGALE", "name": "8. Volatility DCA / Martingale Bot", "type": "DCA / Martingale"},
+    {"id": "ORDER_FLOW_SCALPER", "name": "9. Order Flow & Volume Profile Scalper", "type": "Scalping / Depth"},
+    {"id": "AI_REINFORCEMENT", "name": "10. AI RL Regime-Switching Bot", "type": "Machine Learning"}
+]
 
-class APIKeyRequest(BaseModel):
-    api_key: str
-    api_secret: str
+# State Storage
+ACTIVE_BOTS = []
+ACTIVE_POSITIONS = [
+    {
+        "id": "POS-001",
+        "symbol": "BTCUSDT",
+        "side": "SHORT",
+        "margin_mode": "Cross",
+        "leverage": 20,
+        "size": 0.35,
+        "entry_price": 64250.00,
+        "mark_price": 65120.50,
+        "margin": 1124.37,
+        "pnl": -304.67,
+        "roi": -27.09,
+        "liq_price": 67100.00,
+        "margin_ratio": 4.12
+    },
+    {
+        "id": "POS-002",
+        "symbol": "ETHUSDT",
+        "side": "LONG",
+        "margin_mode": "Isolated",
+        "leverage": 10,
+        "size": 4.5,
+        "entry_price": 2410.00,
+        "mark_price": 2485.30,
+        "margin": 1084.50,
+        "pnl": +338.85,
+        "roi": +31.24,
+        "liq_price": 2180.00,
+        "margin_ratio": 2.85
+    }
+]
 
-class OrderRequest(BaseModel):
+class CustomBotRequest(BaseModel):
+    bot_type: str
     symbol: str
-    mode: str          # SPOT or FUTURES
-    side: str          # BUY or SELL
-    order_type: str    # MARKET, LIMIT, STOP_MARKET
-    price: Optional[float] = None
-    stop_price: Optional[float] = None
-    amount_usdt: float
-    leverage: Optional[int] = 1
-    tp: Optional[float] = None
-    sl: Optional[float] = None
-
-class BotCreateRequest(BaseModel):
-    symbol: str
-    mode: str          # SPOT or FUTURES
-    bot_type: str      # Spot Grid, Futures Grid, Rebalancing, DCA, AI SMC, AI ICT Silver Bullet
-    direction: str     # LONG, SHORT, NEUTRAL
-    grid_mode: str     # Arithmetic, Geometric
-    lower_price: float
-    upper_price: float
-    grid_count: int
     investment: float
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
+    leverage: int
+    custom_params: Dict[str, str]
 
-def get_binance_live_price(symbol: str) -> float:
-    try:
-        # Fetching real ticker price directly from Binance API
-        res = requests.get(f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}", timeout=3)
-        if res.status_code == 200:
-            return float(res.json()["price"])
-    except Exception:
-        pass
-    return 65000.0 if "BTC" in symbol else 3500.0
+@app.get("/api/pairs")
+def get_pairs():
+    return BINANCE_PAIRS
 
-@app.get("/api/market/{symbol}")
-def get_market_data(symbol: str):
-    live_price = get_binance_live_price(symbol)
-    
-    # Generate realistic Order Book relative to live Binance price
-    step = live_price * 0.0002
-    bids = [{"price": round(live_price - (i * step), 2), "qty": round(random.uniform(0.1, 3.5), 3)} for i in range(1, 10)]
-    asks = [{"price": round(live_price + (i * step), 2), "qty": round(random.uniform(0.1, 3.5), 3)} for i in range(1, 10)]
-    
-    # Process Conditional Orders & Stop Loss / Take Profit
-    global open_orders, active_positions
-    remaining_orders = []
-    for ord in open_orders:
-        if ord["symbol"] == symbol:
-            trig = False
-            if ord["type"] == "LIMIT" and ((ord["side"] == "BUY" and live_price <= ord["price"]) or (ord["side"] == "SELL" and live_price >= ord["price"])):
-                trig = True
-            elif ord["type"] == "STOP_MARKET" and ((ord["side"] == "BUY" and live_price >= ord["stop_price"]) or (ord["side"] == "SELL" and live_price <= ord["stop_price"])):
-                trig = True
-
-            if trig:
-                exec_p = ord["price"] if ord["type"] == "LIMIT" else live_price
-                if ord["mode"] == "FUTURES":
-                    pos = {
-                        "id": ord["id"], "symbol": ord["symbol"], "mode": "FUTURES", "side": ord["side"],
-                        "entry_price": exec_p, "amount_usdt": ord["amount"], "leverage": ord["leverage"],
-                        "size": round((ord["amount"] * ord["leverage"]) / exec_p, 4),
-                        "liq_price": round(exec_p * (1 - (0.88 / ord["leverage"])) if ord["side"] == "BUY" else exec_p * (1 + (0.88 / ord["leverage"])), 2),
-                        "tp": ord.get("tp"), "sl": ord.get("sl"), "status": "OPEN"
-                    }
-                    active_positions.append(pos)
-                order_history.append({"id": ord["id"], "symbol": ord["symbol"], "type": f"{ord['mode']}_{ord['side']}", "price": exec_p, "amount": ord["amount"], "status": "FILLED"})
-            else:
-                remaining_orders.append(ord)
+@app.get("/api/futures/state/{symbol}")
+def get_futures_state(symbol: str):
+    # Dynamic Price Fluctuation Simulation for Real-time Binance feel
+    for pos in ACTIVE_POSITIONS:
+        delta = random.uniform(-0.002, 0.002)
+        pos["mark_price"] = round(pos["mark_price"] * (1 + delta), 2)
+        if pos["side"] == "LONG":
+            pos["pnl"] = round((pos["mark_price"] - pos["entry_price"]) * pos["size"], 2)
         else:
-            remaining_orders.append(ord)
-    open_orders = remaining_orders
+            pos["pnl"] = round((pos["entry_price"] - pos["mark_price"]) * pos["size"], 2)
+        pos["roi"] = round((pos["pnl"] / pos["margin"]) * 100, 2)
+
+    total_pnl = sum(p["pnl"] for p in ACTIVE_POSITIONS)
+    total_notional = sum(p["mark_price"] * p["size"] for p in ACTIVE_POSITIONS)
 
     return {
-        "symbol": symbol,
-        "price": live_price,
-        "mode": SYSTEM_MODE,
-        "balances": DEMO_BALANCES,
-        "orderbook": {"bids": bids, "asks": asks}
+        "overview": {
+            "current_pnl": round(total_pnl, 2),
+            "total_notional": round(total_notional, 2),
+            "wallet_balance": 10540.25
+        },
+        "positions": ACTIVE_POSITIONS
     }
 
-@app.post("/api/config/keys")
-def set_api_keys(req: APIKeyRequest):
-    global LIVE_API_CONFIG, SYSTEM_MODE
-    LIVE_API_CONFIG["api_key"] = req.api_key
-    LIVE_API_CONFIG["api_secret"] = req.api_secret
-    SYSTEM_MODE = "LIVE" if req.api_key else "DEMO"
-    return {"status": "SUCCESS", "mode": SYSTEM_MODE}
+@app.get("/api/bots/active")
+def get_active_bots():
+    return ACTIVE_BOTS
 
-@app.post("/api/config/mode")
-def set_mode(mode: str):
-    global SYSTEM_MODE
-    SYSTEM_MODE = mode
-    return {"status": "SUCCESS", "mode": SYSTEM_MODE}
-
-@app.post("/api/order/execute")
-def execute_order(req: OrderRequest):
-    live_p = get_binance_live_price(req.symbol)
-    ord_id = f"ORD-{random.randint(100000, 999999)}"
-
-    if req.order_type == "MARKET":
-        if req.mode == "FUTURES":
-            pos = {
-                "id": ord_id, "symbol": req.symbol, "mode": "FUTURES", "side": req.side,
-                "entry_price": live_p, "amount_usdt": req.amount_usdt, "leverage": req.leverage,
-                "size": round((req.amount_usdt * req.leverage) / live_p, 4),
-                "liq_price": round(live_p * (1 - (0.88 / req.leverage)) if req.side == "BUY" else live_p * (1 + (0.88 / req.leverage)), 2),
-                "tp": req.tp, "sl": req.sl, "status": "OPEN"
-            }
-            active_positions.append(pos)
-        else:
-            # Spot Execution
-            if req.side == "BUY":
-                DEMO_BALANCES["SPOT"] -= req.amount_usdt
-            else:
-                DEMO_BALANCES["SPOT"] += req.amount_usdt
-
-        order_history.append({"id": ord_id, "symbol": req.symbol, "type": f"{req.mode}_MARKET_{req.side}", "price": live_p, "amount": req.amount_usdt, "status": "FILLED"})
-        return {"status": "SUCCESS", "data": "Order Executed"}
-    else:
-        pending = {
-            "id": ord_id, "symbol": req.symbol, "mode": req.mode, "side": req.side,
-            "type": req.order_type, "price": req.price, "stop_price": req.stop_price,
-            "amount": req.amount_usdt, "leverage": req.leverage, "tp": req.tp, "sl": req.sl, "status": "PENDING"
-        }
-        open_orders.append(pending)
-        return {"status": "SUCCESS", "data": pending}
-
-@app.post("/api/bot/create")
-def create_bot(req: BotCreateRequest):
-    bot_id = f"BOT-{random.randint(1000, 9999)}"
-    bot_obj = {
-        "id": bot_id, "symbol": req.symbol, "mode": req.mode, "type": req.bot_type,
-        "direction": req.direction, "grid_mode": req.grid_mode, "lower": req.lower_price,
-        "upper": req.upper_price, "grids": req.grid_count, "investment": req.investment,
-        "pnl": round(random.uniform(1.2, 18.5), 2), "status": "RUNNING"
+@app.post("/api/bots/create")
+def create_custom_bot(req: CustomBotRequest):
+    bot_id = f"BOT-{req.bot_type}-{random.randint(1000, 9999)}"
+    new_bot = {
+        "id": bot_id,
+        "type": req.bot_type,
+        "symbol": req.symbol,
+        "investment": req.investment,
+        "leverage": f"{req.leverage}x",
+        "custom_params": req.custom_params,
+        "pnl": round(random.uniform(-5.0, 15.0), 2),
+        "status": "RUNNING",
+        "created_at": time.strftime("%H:%M:%S")
     }
-    active_bots.append(bot_obj)
-    return {"status": "SUCCESS", "bot": bot_obj}
+    ACTIVE_BOTS.append(new_bot)
+    return {"status": "SUCCESS", "bot": new_bot}
 
-@app.post("/api/bot/stop/{bot_id}")
-def stop_bot(bot_id: str):
-    global active_bots
-    active_bots = [b for b in active_bots if b["id"] != bot_id]
+@app.post("/api/futures/close-position/{pos_id}")
+def close_position(pos_id: str):
+    global ACTIVE_POSITIONS
+    ACTIVE_POSITIONS = [p for p in ACTIVE_POSITIONS if p["id"] != pos_id]
     return {"status": "SUCCESS"}
 
-@app.get("/api/dashboard/{symbol}")
-def get_dashboard(symbol: str):
-    live_p = get_binance_live_price(symbol)
-    pos_out = []
-    for p in active_positions:
-        if p["symbol"] == symbol:
-            pnl = (live_p - p["entry_price"]) * p["size"] if p["side"] == "BUY" else (p["entry_price"] - live_p) * p["size"]
-            pnl_pct = (pnl / p["amount_usdt"]) * 100
-            pos_out.append({**p, "mark_price": live_p, "pnl": round(pnl, 2), "pnl_pct": round(pnl_pct, 2)})
-
-    return {
-        "symbol": symbol, "live_price": live_p, "mode": SYSTEM_MODE, "balances": DEMO_BALANCES,
-        "positions": pos_out, "open_orders": [o for o in open_orders if o["symbol"] == symbol],
-        "bots": [b for b in active_bots if b["symbol"] == symbol]
-    }
-
 @app.get("/", response_class=HTMLResponse)
-def index():
+def root():
     with open("index.html", "r", encoding="utf-8") as f:
         return f.read()
