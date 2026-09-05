@@ -109,7 +109,10 @@ def get_futures_state(symbol: str):
         },
         "positions": ACTIVE_POSITIONS
     }
-
+@app.get("/api/market/{symbol}")
+def get_market_data(symbol: str):
+    # Missing endpoint fix for 404 error
+    return get_futures_state(symbol)
 @app.get("/api/bots/active")
 def get_active_bots():
     return ACTIVE_BOTS
