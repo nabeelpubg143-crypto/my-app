@@ -21,7 +21,9 @@
         .status-active { background: #0ecb81; color: black; }
         .status-inactive { background: #f6465d; color: white; }
         
-        /* Grid Order Book Table Styling */
+        .pnl-green { color: #0ecb81; font-weight: bold; }
+        .pnl-red { color: #f6465d; font-weight: bold; }
+
         table { width: 100%; border-collapse: collapse; margin-top: 15px; }
         th, td { padding: 10px; text-align: left; border-bottom: 1px solid #2b313a; }
         th { color: #848e9c; background: #181a20; }
@@ -33,6 +35,7 @@
     <div class="container">
         <h1>🚀 Binance Pro Trading & Grid Bot</h1>
 
+        <!-- Mode & Pair Selector -->
         <div class="card">
             <h2>1. Account & Pair Selection</h2>
             <div class="form-group">
@@ -52,6 +55,7 @@
             </div>
         </div>
 
+        <!-- Strategy Setup -->
         <div class="card">
             <h2>2. Bot Configuration</h2>
             <div class="form-group">
@@ -65,11 +69,12 @@
                 </select>
             </div>
 
+            <div class="form-group">
+                <label>Total Strategy Investment (USDT)</label>
+                <input type="number" id="totalInvestment" value="1000">
+            </div>
+
             <div id="gridInputs">
-                <div class="form-group">
-                    <label>Total Grid Investment (USDT)</label>
-                    <input type="number" id="totalInvestment" value="1000">
-                </div>
                 <div class="form-group">
                     <label>Lower Price Limit</label>
                     <input type="number" id="lowerPrice" placeholder="e.g. 50000">
@@ -88,14 +93,26 @@
             <button class="btn-stop" onclick="stopBot()">Stop Bot</button>
         </div>
 
+        <!-- Live Running Bot Details -->
         <div class="card">
-            <h2>3. Running Bot Live Details (Binance View)</h2>
+            <h2>3. Running Bot Live Details & Position</h2>
             <p>Bot Status: <span id="botStatus" class="status-badge status-inactive">INACTIVE</span></p>
-            <p>Active Pair: <strong id="activePair" style="color: #f0b90b;">-</strong></p>
-            <p>Total Grid Investment: <strong id="activeInv">$0.00 USDT</strong></p>
-            <p>Buy Orders Active: <strong class="buy-text" id="buyCount">0</strong> | Sell Orders Active: <strong class="sell-text" id="sellCount">0</strong></p>
+            <p>Active Pair: <strong id="activePair" style="color: #f0b90b;">-</strong> | Strategy: <strong id="activeStrategy">-</strong></p>
+            <p>Total Investment: <strong id="activeInv">$0.00 USDT</strong> | Total Grids: <strong id="activeGrids">0</strong></p>
+            
+            <hr style="border: 0.5px solid #2b313a;">
+            
+            <!-- Active Position Details -->
+            <h3>📊 Live Active Position</h3>
+            <p>Entry Price: <strong id="entryPrice">$0.00</strong></p>
+            <p>Market Price: <strong id="marketPrice">$0.00</strong></p>
+            <p>Unrealized Profit / Loss (PnL): <strong id="livePnL" class="pnl-green">$0.00 (0.00%)</strong></p>
 
-            <h3>📋 Placed Grid Orders & Levels</h3>
+            <hr style="border: 0.5px solid #2b313a;">
+
+            <!-- Grid Order Book Table -->
+            <h3>📋 Active Grid Buy / Sell Limit Orders</h3>
+            <p>Buy Orders: <strong class="buy-text" id="buyCount">0</strong> | Sell Orders: <strong class="sell-text" id="sellCount">0</strong></p>
             <table>
                 <thead>
                     <tr>
@@ -107,7 +124,7 @@
                     </tr>
                 </thead>
                 <tbody id="gridOrderTable">
-                    <tr><td colspan="5" style="text-align:center; color:#848e9c;">No Active Grid Bot Running</td></tr>
+                    <tr><td colspan="5" style="text-align:center; color:#848e9c;">No Active Bot Running</td></tr>
                 </tbody>
             </table>
         </div>
@@ -126,9 +143,9 @@
                 trading_mode: document.getElementById("tradingMode").value,
                 symbol: document.getElementById("symbol").value,
                 strategy: document.getElementById("strategy").value,
-                total_investment: parseFloat(document.getElementById("totalInvestment").value) || 100,
-                lower_price: parseFloat(document.getElementById("lowerPrice").value) || 0,
-                upper_price: parseFloat(document.getElementById("upperPrice").value) || 0,
+                total_investment: parseFloat(document.getElementById("totalInvestment").value) || 1000,
+                lower_price: parseFloat(document.getElementById("lowerPrice").value) || 50000,
+                upper_price: parseFloat(document.getElementById("upperPrice").value) || 70000,
                 grids: parseInt(document.getElementById("gridsCount").value) || 10
             };
 
@@ -139,33 +156,50 @@
             });
             const data = await res.json();
             if (res.ok) {
-                renderGridDetails(data.grid_orders, config);
+                renderDashboard(data);
             } else {
                 alert(data.detail);
             }
         }
 
-        function renderGridDetails(orders, config) {
+        function renderDashboard(data) {
             document.getElementById("botStatus").innerText = "RUNNING";
             document.getElementById("botStatus").className = "status-badge status-active";
-            document.getElementById("activePair").innerText = config.symbol;
-            document.getElementById("activeInv").innerText = `$${config.total_investment} USDT`;
+            document.getElementById("activePair").innerText = data.config.symbol;
+            document.getElementById("activeStrategy").innerText = data.config.strategy.toUpperCase();
+            document.getElementById("activeInv").innerText = `$${data.config.total_investment} USDT`;
+            document.getElementById("activeGrids").innerText = data.config.grids;
 
+            // Position Details
+            document.getElementById("entryPrice").innerText = `$${data.position.entry_price.toFixed(2)}`;
+            document.getElementById("marketPrice").innerText = `$${data.position.market_price.toFixed(2)}`;
+            
+            const pnlElem = document.getElementById("livePnL");
+            const pnlVal = data.position.pnl;
+            const pnlPercent = data.position.pnl_percent;
+            pnlElem.innerText = `${pnlVal >= 0 ? '+' : ''}$${pnlVal.toFixed(2)} (${pnlPercent.toFixed(2)}%)`;
+            pnlElem.className = pnlVal >= 0 ? "pnl-green" : "pnl-red";
+
+            // Orders Table
             let buyC = 0, sellC = 0;
             let rowsHtml = "";
 
-            orders.forEach(o => {
-                if (o.type === "BUY") buyC++; else sellC++;
-                rowsHtml += `
-                    <tr>
-                        <td>Grid #${o.grid_num}</td>
-                        <td class="${o.type === 'BUY' ? 'buy-text' : 'sell-text'}">${o.type}</td>
-                        <td>$${o.price.toFixed(2)}</td>
-                        <td>$${o.amount.toFixed(2)} USDT</td>
-                        <td><span style="color:#0ecb81;">OPEN ORDER</span></td>
-                    </tr>
-                `;
-            });
+            if (data.grid_orders.length > 0) {
+                data.grid_orders.forEach(o => {
+                    if (o.type === "BUY") buyC++; else sellC++;
+                    rowsHtml += `
+                        <tr>
+                            <td>Grid #${o.grid_num}</td>
+                            <td class="${o.type === 'BUY' ? 'buy-text' : 'sell-text'}">${o.type}</td>
+                            <td>$${o.price.toFixed(2)}</td>
+                            <td>$${o.amount.toFixed(2)} USDT</td>
+                            <td><span style="color:#0ecb81;">OPEN LIMIT</span></td>
+                        </tr>
+                    `;
+                });
+            } else {
+                rowsHtml = `<tr><td colspan="5" style="text-align:center; color:#848e9c;">Active Strategy Running Without Grid Orders</td></tr>`;
+            }
 
             document.getElementById("buyCount").innerText = buyC;
             document.getElementById("sellCount").innerText = sellC;
@@ -177,6 +211,7 @@
             document.getElementById("botStatus").innerText = "INACTIVE";
             document.getElementById("botStatus").className = "status-badge status-inactive";
             document.getElementById("gridOrderTable").innerHTML = `<tr><td colspan="5" style="text-align:center; color:#848e9c;">Bot Stopped</td></tr>`;
+            document.getElementById("livePnL").innerText = "$0.00 (0.00%)";
         }
     </script>
 </body>
