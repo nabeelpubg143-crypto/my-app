@@ -2,10 +2,9 @@ from fastapi import FastAPI, HTTPException
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
 from binance.client import Client
-import uvicorn
 import os
 
-app = FastAPI(title="Multi-Strategy Binance Trading & Demo Bot")
+app = FastAPI(title="Binance Advanced Grid & Multi-Strategy Bot Engine")
 
 class APIKeyCredentials(BaseModel):
     api_key: str
@@ -13,13 +12,13 @@ class APIKeyCredentials(BaseModel):
     testnet: bool = True
 
 class BotConfig(BaseModel):
-    trading_mode: str  # 'demo' or 'live'
-    symbol: str
-    strategy: str      # 'smc', 'silver_bullet', 'dca', 'grid', 'combo'
-    amount: float
-    lower_price: float = None
-    upper_price: float = None
-    grids: int = None
+    trading_mode: str          # 'demo' or 'live'
+    symbol: str                # 'BTCUSDT', 'ETHUSDT', 'PAXGUSDT'
+    strategy: str              # 'grid', 'combo', 'smc', 'silver_bullet', 'dca'
+    total_investment: float = 1000.0
+    lower_price: float = 50000.0
+    upper_price: float = 70000.0
+    grids: int = 10
 
 bot_state = {
     "is_running": False,
@@ -27,19 +26,21 @@ bot_state = {
     "strategy": None,
     "symbol": None,
     "client": None,
-    "demo_wallet": {
-        "USDT": 10000.00,
-        "positions": []
+    "active_orders": [],
+    "position": {
+        "entry_price": 0.0,
+        "market_price": 0.0,
+        "pnl": 0.0,
+        "pnl_percent": 0.0
     }
 }
 
-# Direct Web Dashboard Serve
 @app.get("/", response_class=HTMLResponse)
 def serve_dashboard():
     if os.path.exists("index.html"):
         with open("index.html", "r", encoding="utf-8") as f:
             return f.read()
-    return "<h1>index.html file not found!</h1>"
+    return "<h1>index.html not found!</h1>"
 
 @app.post("/api/connect")
 def connect_binance(creds: APIKeyCredentials):
@@ -60,30 +61,49 @@ def start_bot(config: BotConfig):
     bot_state["strategy"] = config.strategy
     bot_state["symbol"] = config.symbol
 
-    mode_label = "DEMO (Paper Trading - Virtual $10,000)" if config.trading_mode == "demo" else "LIVE BINANCE"
+    # Fake Market Calculation for Visualizing Position
+    entry_p = (config.lower_price + config.upper_price) / 2
+    market_p = entry_p * 1.015  # Simulated +1.5% price movement
+    pnl_val = (config.total_investment * 0.015)
+    
+    bot_state["position"] = {
+        "entry_price": entry_p,
+        "market_price": market_p,
+        "pnl": pnl_val,
+        "pnl_percent": 1.5
+    }
 
-    if config.strategy == "smc":
-        msg = f"SMC Strategy (FVG/OB/Fib) active in [{mode_label}] on {config.symbol}"
-    elif config.strategy == "silver_bullet":
-        msg = f"ICT Silver Bullet Strategy active in [{mode_label}] on {config.symbol}"
-    elif config.strategy == "dca":
-        msg = f"DCA Bot started in [{mode_label}] for {config.symbol} with trade amount ${config.amount}"
-    elif config.strategy == "grid":
-        msg = f"Grid Bot setup in [{mode_label}] on {config.symbol} ({config.lower_price} - {config.upper_price})"
-    elif config.strategy == "combo":
-        msg = f"Combo Bot (Grid + DCA) active in [{mode_label}] on {config.symbol}"
-    else:
-        bot_state["is_running"] = False
-        raise HTTPException(status_code=400, detail="Invalid Strategy Selected.")
+    # Grid Orders Calculation
+    orders = []
+    if config.strategy in ["grid", "combo"]:
+        price_step = (config.upper_price - config.lower_price) / config.grids
+        per_grid_amount = config.total_investment / config.grids
+        
+        for i in range(config.grids + 1):
+            grid_price = config.lower_price + (i * price_step)
+            order_type = "BUY" if grid_price < entry_p else "SELL"
+            orders.append({
+                "grid_num": i + 1,
+                "type": order_type,
+                "price": grid_price,
+                "amount": per_grid_amount
+            })
+        
+    bot_state["active_orders"] = orders
 
-    return {"status": "started", "message": msg, "active_config": config}
+    return {
+        "status": "started",
+        "message": f"Bot Active on {config.symbol}",
+        "config": config,
+        "position": bot_state["position"],
+        "grid_orders": orders
+    }
 
 @app.post("/api/stop-bot")
 def stop_bot():
     bot_state["is_running"] = False
-    bot_state["strategy"] = None
-    bot_state["symbol"] = None
-    return {"status": "stopped", "message": "Bot execution halted safely."}
+    bot_state["active_orders"] = []
+    return {"status": "stopped", "message": "Bot Execution Halted Safely."}
 
 @app.get("/api/status")
 def get_status():
@@ -92,6 +112,7 @@ def get_status():
         "mode": bot_state["mode"],
         "strategy": bot_state["strategy"],
         "symbol": bot_state["symbol"],
-        "demo_balance": bot_state["demo_wallet"]["USDT"]
+        "position": bot_state["position"],
+        "active_orders": bot_state["active_orders"]
     }
-  
+    
