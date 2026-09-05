@@ -1,311 +1,308 @@
-        <!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Binance Enterprise AI & Conditional Order Terminal</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Binance Pro Official AI Trading Terminal</title>
     <script type="text/javascript" src="https://s3.tradingview.com/tv.js"></script>
     <style>
         :root {
-            --bg-dark: #0b0e11; --panel-bg: #181a20; --card-bg: #1e2329;
-            --border: #2b313a; --yellow: #f0b90b; --green: #0ecb81; --red: #f6465d; --gray: #848e9c;
+            --bg-main: #12161c; --bg-panel: #1e2329; --bg-card: #2b313a;
+            --yellow: #f0b90b; --green: #0ecb81; --red: #f6465d; --text-gray: #848e9c;
         }
-        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: var(--bg-dark); color: #eaecef; font-size: 11px; }
-        header { display: flex; align-items: center; justify-content: space-between; padding: 6px 16px; background-color: var(--panel-bg); border-bottom: 1px solid var(--border); }
-        .logo { font-size: 15px; font-weight: bold; color: var(--yellow); }
-        .pair-selector { display: flex; gap: 4px; overflow-x: auto; padding: 4px 8px; background: #14161c; border-bottom: 1px solid var(--border); }
-        .pair-btn { background: var(--card-bg); border: 1px solid var(--border); color: var(--gray); font-size: 11px; padding: 4px 8px; border-radius: 3px; cursor: pointer; white-space: nowrap; }
-        .pair-btn.active { color: var(--yellow); border-color: var(--yellow); background: var(--panel-bg); }
-        .ticker-bar { display: flex; gap: 20px; align-items: center; background: var(--panel-bg); padding: 6px 16px; border-bottom: 1px solid var(--border); }
-        .grid-container { display: grid; grid-template-columns: 210px 1fr 310px; gap: 1px; background: var(--border); height: calc(100vh - 92px); }
-        .panel { background: var(--panel-bg); padding: 8px; overflow-y: auto; }
-        .orderbook-table, .data-table { width: 100%; border-collapse: collapse; }
-        .orderbook-table td { padding: 2px 0; font-family: monospace; }
-        .green { color: var(--green); } .red { color: var(--red); } .yellow { color: var(--yellow); }
-        .tab-btn { background: none; border: none; color: var(--gray); font-weight: bold; padding: 5px 10px; cursor: pointer; }
+        body { margin: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: var(--bg-main); color: #eaecef; font-size: 11px; }
+        header { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-panel); border-bottom: 1px solid var(--bg-card); }
+        .logo { color: var(--yellow); font-size: 14px; font-weight: bold; display: flex; align-items: center; gap: 6px; }
+        .mode-badge { padding: 3px 8px; border-radius: 3px; font-weight: bold; cursor: pointer; }
+        .mode-demo { background: #2b313a; color: var(--yellow); border: 1px solid var(--yellow); }
+        .mode-live { background: var(--green); color: #000; }
+        
+        .main-layout { display: grid; grid-template-columns: 220px 1fr 340px; gap: 1px; background: var(--bg-card); height: calc(100vh - 45px); }
+        .panel { background: var(--bg-panel); padding: 8px; overflow-y: auto; }
+        
+        .tab-btn { background: none; border: none; color: var(--text-gray); font-weight: bold; padding: 6px 12px; cursor: pointer; }
         .tab-btn.active { color: var(--yellow); border-bottom: 2px solid var(--yellow); }
-        .btn { width: 100%; padding: 8px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 6px; }
+        
+        input, select { width: 100%; padding: 6px; background: var(--bg-card); border: 1px solid #363c4e; color: #fff; border-radius: 4px; box-sizing: border-box; margin-top: 2px; margin-bottom: 8px; }
+        .btn { width: 100%; padding: 8px; border: none; border-radius: 4px; font-weight: bold; cursor: pointer; }
         .btn-buy { background: var(--green); color: #fff; } .btn-sell { background: var(--red); color: #fff; }
-        input, select { width: 100%; padding: 6px; background: var(--card-bg); border: 1px solid var(--border); color: #fff; border-radius: 3px; margin-top: 2px; margin-bottom: 6px; box-sizing: border-box; }
-        #chart-container { width: 100%; height: 380px; }
+        
+        .data-table { width: 100%; border-collapse: collapse; }
+        .data-table th { text-align: left; color: var(--text-gray); padding: 4px 0; border-bottom: 1px solid var(--bg-card); }
+        .data-table td { padding: 5px 0; border-bottom: 1px solid #1a1e24; }
+        .green { color: var(--green); } .red { color: var(--red); } .yellow { color: var(--yellow); }
     </style>
 </head>
 <body>
 
     <header>
-        <div class="logo">⚡ BINANCE PRO TERMINAL</div>
-        <div style="color: var(--gray);">Market | Limit | Stop-Market Conditional Orders | AI Bots</div>
+        <div class="logo">⚡ BINANCE PRO AI TERMINAL</div>
+        <div style="display: flex; gap: 10px; align-items: center;">
+            <span id="wallet-balance" class="yellow" style="font-weight: bold;">Wallet: $10,000.00 USDT</span>
+            <button id="mode-btn" class="mode-badge mode-demo" onclick="toggleModeModal()">DEMO MODE</button>
+            <button class="mode-badge" style="background: var(--bg-card); color: #fff;" onclick="openAPIModal()">🔑 API Keys</button>
+        </div>
     </header>
 
-    <div class="pair-selector">
-        <button class="pair-btn active" onclick="switchSymbol('BTCUSDT', 'BINANCE:BTCUSDT')">BTC/USDT</button>
-        <button class="pair-btn" onclick="switchSymbol('ETHUSDT', 'BINANCE:ETHUSDT')">ETH/USDT</button>
-        <button class="pair-btn" onclick="switchSymbol('SOLUSDT', 'BINANCE:SOLUSDT')">SOL/USDT</button>
-        <button class="pair-btn" onclick="switchSymbol('BNBUSDT', 'BINANCE:BNBUSDT')">BNB/USDT</button>
-        <button class="pair-btn" onclick="switchSymbol('XRPUSDT', 'BINANCE:XRPUSDT')">XRP/USDT</button>
-        <button class="pair-btn" onclick="switchSymbol('DOGEUSDT', 'BINANCE:DOGEUSDT')">DOGE/USDT</button>
-        <button class="pair-btn" onclick="switchSymbol('ADAUSDT', 'BINANCE:ADAUSDT')">ADA/USDT</button>
-        <button class="pair-btn" onclick="switchSymbol('NEARUSDT', 'BINANCE:NEARUSDT')">NEAR/USDT</button>
-        <button class="pair-btn" onclick="switchSymbol('XAUUSDT', 'OANDA:XAUUSD')">XAU/USDT (GOLD)</button>
-    </div>
-
-    <div class="ticker-bar">
-        <div><span style="color: var(--gray);">Mark Price</span><br><span id="mark-price" class="green" style="font-size: 15px; font-weight: bold;">0.00</span></div>
-        <div><span style="color: var(--gray);">24h High</span><br><span id="ticker-high">0.00</span></div>
-        <div><span style="color: var(--gray);">24h Low</span><br><span id="ticker-low">0.00</span></div>
-        <div><span style="color: var(--gray);">24h Vol</span><br><span id="ticker-vol">0.00</span></div>
-    </div>
-
-    <div class="grid-container">
+    <div class="main-layout">
         <!-- ORDERBOOK -->
         <div class="panel">
-            <b style="color: var(--gray);">Order Book</b>
-            <table class="orderbook-table" style="margin-top: 6px;">
+            <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                <b style="color: var(--text-gray);">Order Book</b>
+                <span id="live-symbol-title" class="yellow">BTCUSDT</span>
+            </div>
+            <table class="data-table">
                 <tbody id="asks-body"></tbody>
             </table>
-            <div id="ob-mid" class="green" style="text-align: center; font-size: 14px; font-weight: bold; margin: 6px 0;">0.00</div>
-            <table class="orderbook-table">
+            <div id="live-price-display" class="green" style="text-align: center; font-size: 16px; font-weight: bold; margin: 8px 0;">0.00</div>
+            <table class="data-table">
                 <tbody id="bids-body"></tbody>
             </table>
         </div>
 
-        <!-- CENTER CHART & DASHBOARD -->
-        <div class="panel" style="padding: 0; display: flex; flex-direction: column;">
-            <div id="chart-container"></div>
-            
+        <!-- CENTER CHART & TRADING DASHBOARD -->
+        <div class="panel" style="padding:0; display: flex; flex-direction: column;">
+            <!-- SPOT / FUTURES SEGREGATION TABS -->
+            <div style="background: var(--bg-main); padding: 4px 8px; border-bottom: 1px solid var(--bg-card); display: flex; gap: 10px;">
+                <button class="tab-btn active" id="tab-futures" onclick="switchMarketType('FUTURES')">Futures Trading (125x)</button>
+                <button class="tab-btn" id="tab-spot" onclick="switchMarketType('SPOT')">Spot Trading</button>
+            </div>
+
+            <div id="tv-chart-container" style="height: 420px; width: 100%;"></div>
+
+            <!-- DASHBOARD TABS -->
             <div style="padding: 8px;">
-                <div style="border-bottom: 1px solid var(--border); margin-bottom: 8px;">
-                    <button class="tab-btn active" onclick="switchCenterTab('pos')">Positions</button>
-                    <button class="tab-btn" onclick="switchCenterTab('orders')">Open Orders / Triggers</button>
-                    <button class="tab-btn" onclick="switchCenterTab('bots')">Active Bots</button>
-                </div>
-                
-                <div id="center-pos">
-                    <table class="data-table">
-                        <thead>
-                            <tr><th>Symbol</th><th>Side / Lev</th><th>Entry</th><th>Mark</th><th>Liq</th><th>Unrealized PnL</th><th>Action</th></tr>
-                        </thead>
-                        <tbody id="positions-body"><tr><td colspan="7" style="text-align: center; color: var(--gray);">No active positions</td></tr></tbody>
-                    </table>
+                <div style="border-bottom: 1px solid var(--bg-card); margin-bottom: 6px;">
+                    <button class="tab-btn active" onclick="switchDashTab('pos')">Positions</button>
+                    <button class="tab-btn" onclick="switchDashTab('orders')">Open Orders</button>
+                    <button class="tab-btn" onclick="switchDashTab('bots')">Active AI Bots</button>
                 </div>
 
-                <div id="center-orders" style="display: none;">
+                <div id="dash-pos">
                     <table class="data-table">
-                        <thead>
-                            <tr><th>Order ID</th><th>Type</th><th>Side</th><th>Price / Trigger</th><th>Amount ($)</th><th>Status</th><th>Action</th></tr>
-                        </thead>
-                        <tbody id="orders-body"><tr><td colspan="7" style="text-align: center; color: var(--gray);">No open orders pending</td></tr></tbody>
+                        <thead><tr><th>Symbol</th><th>Side</th><th>Entry</th><th>Mark</th><th>Liq Price</th><th>PnL (USDT)</th><th>Action</th></tr></thead>
+                        <tbody id="pos-table-body"></tbody>
                     </table>
                 </div>
-
-                <div id="center-bots" style="display: none;">
+                <div id="dash-orders" style="display: none;">
                     <table class="data-table">
-                        <thead>
-                            <tr><th>Bot ID</th><th>Type</th><th>Mode</th><th>Direction</th><th>Capital</th><th>PnL ($)</th><th>Status</th></tr>
-                        </thead>
-                        <tbody id="bots-body"><tr><td colspan="7" style="text-align: center; color: var(--gray);">No active bots running</td></tr></tbody>
+                        <thead><tr><th>ID</th><th>Type</th><th>Side</th><th>Trigger/Price</th><th>Amount</th><th>Status</th></tr></thead>
+                        <tbody id="orders-table-body"></tbody>
+                    </table>
+                </div>
+                <div id="dash-bots" style="display: none;">
+                    <table class="data-table">
+                        <thead><tr><th>Bot ID</th><th>Type</th><th>Mode</th><th>Direction</th><th>Capital</th><th>PnL ($)</th><th>Action</th></tr></thead>
+                        <tbody id="bots-table-body"></tbody>
                     </table>
                 </div>
             </div>
         </div>
 
-        <!-- RIGHT TRADING CONTROLS -->
+        <!-- RIGHT SIDE CONTROL PANEL -->
         <div class="panel">
-            <div style="display: flex; gap: 4px; margin-bottom: 8px;">
-                <button id="btn-manual-tab" class="tab-btn active" style="flex:1;" onclick="toggleSidePanel('manual')">Order Entry</button>
-                <button id="btn-bot-tab" class="tab-btn" style="flex:1;" onclick="toggleSidePanel('bot')">AI Bots</button>
+            <div style="display: flex; border-bottom: 1px solid var(--bg-card); margin-bottom: 8px;">
+                <button class="tab-btn active" id="side-trade-tab" style="flex:1;" onclick="switchSidePanel('trade')">Manual Trade</button>
+                <button class="tab-btn" id="side-bot-tab" style="flex:1;" onclick="switchSidePanel('bot')">🤖 AI Bot Creator</button>
             </div>
 
-            <!-- MANUAL EXECUTION SYSTEM -->
-            <div id="panel-manual">
-                <label>Trading Mode</label>
-                <select id="trade-mode"><option value="FUTURES">Futures (Cross/Isolated)</option><option value="SPOT">Spot Trading</option></select>
-                
+            <!-- MANUAL TRADING PANEL -->
+            <div id="panel-manual-trade">
                 <label>Execution Order Type</label>
-                <select id="order-type" onchange="handleOrderTypeChange()">
+                <select id="ord-type" onchange="handleTypeChange()">
                     <option value="MARKET">Market Order (Instant)</option>
-                    <option value="LIMIT">Limit Order (Pending)</option>
-                    <option value="STOP_MARKET">Stop Market (Conditional Trigger)</option>
+                    <option value="LIMIT">Limit Order</option>
+                    <option value="STOP_MARKET">Stop Market (Conditional)</option>
                 </select>
 
-                <div id="field-limit-price" style="display: none;">
+                <div id="limit-price-box" style="display: none;">
                     <label>Limit Price ($)</label>
-                    <input type="number" id="trade-price" placeholder="Target Buy/Sell Price">
+                    <input type="number" id="ord-limit-p" placeholder="Price">
+                </div>
+                <div id="stop-price-box" style="display: none;">
+                    <label>Stop Trigger Price ($)</label>
+                    <input type="number" id="ord-stop-p" placeholder="Trigger Price">
                 </div>
 
-                <div id="field-stop-price" style="display: none;">
-                    <label>Stop Conditional Trigger Price ($)</label>
-                    <input type="number" id="trade-stop-price" placeholder="Trigger Price Level">
+                <div id="leverage-box">
+                    <label>Leverage (1x - 125x)</label>
+                    <input type="number" id="ord-lev" value="20">
                 </div>
 
-                <label>Leverage (1x - 125x)</label>
-                <input type="number" id="trade-lev" value="20">
                 <label>Margin / Amount (USDT)</label>
-                <input type="number" id="trade-amt" value="100">
-                <label>Take Profit (TP Price)</label>
-                <input type="number" id="trade-tp" placeholder="Optional TP">
-                <label>Stop Loss (SL Price)</label>
-                <input type="number" id="trade-sl" placeholder="Optional SL">
-                
+                <input type="number" id="ord-amt" value="100">
+
+                <label>Take Profit (TP)</label>
+                <input type="number" id="ord-tp" placeholder="Optional">
+                <label>Stop Loss (SL)</label>
+                <input type="number" id="ord-sl" placeholder="Optional">
+
                 <button class="btn btn-buy" onclick="placeOrder('BUY')">BUY / LONG</button>
-                <button class="btn btn-sell" onclick="placeOrder('SELL')">SELL / SHORT</button>
+                <button class="btn btn-sell" style="margin-top:6px;" onclick="placeOrder('SELL')">SELL / SHORT</button>
             </div>
 
-            <!-- BOTS CONTROL -->
-            <div id="panel-bot" style="display: none;">
-                <label>Strategy Engine</label>
-                <select id="bot-type">
-                    <option value="Futures Grid">Futures Grid Bot</option>
-                    <option value="Spot Grid">Spot Grid Bot</option>
+            <!-- BOT CREATOR PANEL -->
+            <div id="panel-bot-creator" style="display: none;">
+                <label>Strategy Architecture</label>
+                <select id="bot-strategy">
+                    <option value="Spot Grid Bot">Binance Spot Grid</option>
+                    <option value="Futures Grid Bot">Binance Futures Grid</option>
+                    <option value="Auto-DCA Engine">Auto DCA Strategy</option>
                     <option value="AI SMC Confluence">AI SMC (FVG + OB + Fib)</option>
-                    <option value="AI ICT Silver Bullet">AI ICT Silver Bullet</option>
+                    <option value="AI ICT Silver Bullet">AI ICT Silver Bullet (Strict)</option>
                 </select>
+
                 <label>Grid Mode</label>
-                <select id="grid-mode">
-                    <option value="Arithmetic (Fixed)">Arithmetic (Fixed Step)</option>
-                    <option value="Geometric (Volatility)">Geometric (% Volatility Step)</option>
+                <select id="bot-grid-mode">
+                    <option value="Arithmetic">Arithmetic (Equal Steps)</option>
+                    <option value="Geometric">Geometric (% Steps)</option>
                 </select>
+
                 <label>Direction</label>
-                <select id="bot-direction"><option value="LONG">LONG</option><option value="SHORT">SHORT</option></select>
+                <select id="bot-dir"><option value="LONG">LONG</option><option value="SHORT">SHORT</option><option value="NEUTRAL">NEUTRAL</option></select>
+
+                <label>Lower Price Limit ($)</label>
+                <input type="number" id="bot-low-p" placeholder="e.g. 60000">
+
+                <label>Upper Price Limit ($)</label>
+                <input type="number" id="bot-high-p" placeholder="e.g. 75000">
+
+                <label>Number of Grids</label>
+                <input type="number" id="bot-grids" value="10">
+
                 <label>Investment Capital (USDT)</label>
                 <input type="number" id="bot-capital" value="500">
-                <button class="btn" style="background: var(--yellow); color: #000;" onclick="launchAIBot()">DEPLOY BOT</button>
+
+                <button class="btn" style="background: var(--yellow); color:#000;" onclick="deployBot()">DEPLOY PROFESSIONAL BOT</button>
             </div>
         </div>
     </div>
 
     <script>
-        let currentSymbol = 'BTCUSDT';
-        let currentTVSymbol = 'BINANCE:BTCUSDT';
+        let symbol = 'BTCUSDT';
+        let marketMode = 'FUTURES';
 
-        function handleOrderTypeChange() {
-            const type = document.getElementById('order-type').value;
-            document.getElementById('field-limit-price').style.display = type === 'LIMIT' ? 'block' : 'none';
-            document.getElementById('field-stop-price').style.display = type === 'STOP_MARKET' ? 'block' : 'none';
-        }
-
-        function initTradingView(tvSym) {
-            document.getElementById('chart-container').innerHTML = '';
+        function initTVChart() {
+            document.getElementById('tv-chart-container').innerHTML = '';
             new TradingView.widget({
-                "autosize": true, "symbol": tvSym, "interval": "15", "timezone": "Etc/UTC",
-                "theme": "dark", "style": "1", "locale": "en", "toolbar_bg": "#181a20",
-                "enable_publishing": false, "hide_side_toolbar": false, "container_id": "chart-container"
+                "autosize": true, "symbol": "BINANCE:" + symbol, "interval": "15",
+                "timezone": "Etc/UTC", "theme": "dark", "style": "1", "locale": "en",
+                "toolbar_bg": "#1e2329", "enable_publishing": false, "container_id": "tv-chart-container"
             });
         }
 
-        function switchSymbol(sym, tvSym) {
-            currentSymbol = sym; currentTVSymbol = tvSym;
-            document.querySelectorAll('.pair-btn').forEach(b => b.classList.remove('active'));
-            event.target.classList.add('active');
-            initTradingView(tvSym);
-            syncData();
+        function switchMarketType(mode) {
+            marketMode = mode;
+            document.getElementById('tab-futures').classList.toggle('active', mode === 'FUTURES');
+            document.getElementById('tab-spot').classList.toggle('active', mode === 'SPOT');
+            document.getElementById('leverage-box').style.display = mode === 'FUTURES' ? 'block' : 'none';
         }
 
-        function toggleSidePanel(type) {
-            document.getElementById('panel-manual').style.display = type === 'manual' ? 'block' : 'none';
-            document.getElementById('panel-bot').style.display = type === 'bot' ? 'block' : 'none';
-            document.getElementById('btn-manual-tab').classList.toggle('active', type === 'manual');
-            document.getElementById('btn-bot-tab').classList.toggle('active', type === 'bot');
+        function switchSidePanel(p) {
+            document.getElementById('panel-manual-trade').style.display = p === 'trade' ? 'block' : 'none';
+            document.getElementById('panel-bot-creator').style.display = p === 'bot' ? 'block' : 'none';
+            document.getElementById('side-trade-tab').classList.toggle('active', p === 'trade');
+            document.getElementById('side-bot-tab').classList.toggle('active', p === 'bot');
         }
 
-        function switchCenterTab(tab) {
-            document.getElementById('center-pos').style.display = tab === 'pos' ? 'block' : 'none';
-            document.getElementById('center-orders').style.display = tab === 'orders' ? 'block' : 'none';
-            document.getElementById('center-bots').style.display = tab === 'bots' ? 'block' : 'none';
+        function switchDashTab(tab) {
+            document.getElementById('dash-pos').style.display = tab === 'pos' ? 'block' : 'none';
+            document.getElementById('dash-orders').style.display = tab === 'orders' ? 'block' : 'none';
+            document.getElementById('dash-bots').style.display = tab === 'bots' ? 'block' : 'none';
         }
 
-        async function syncData() {
-            const res = await fetch(`/api/market/${currentSymbol}`);
+        function handleTypeChange() {
+            const t = document.getElementById('ord-type').value;
+            document.getElementById('limit-price-box').style.display = t === 'LIMIT' ? 'block' : 'none';
+            document.getElementById('stop-price-box').style.display = t === 'STOP_MARKET' ? 'block' : 'none';
+        }
+
+        async function syncLiveTerminal() {
+            const res = await fetch(`/api/dashboard/${symbol}`);
             const data = await res.json();
 
-            document.getElementById('mark-price').innerText = data.market.price;
-            document.getElementById('ob-mid').innerText = data.market.price;
-            document.getElementById('ticker-high').innerText = data.market.high;
-            document.getElementById('ticker-low').innerText = data.market.low;
-            document.getElementById('ticker-vol').innerText = data.market.vol;
+            document.getElementById('live-price-display').innerText = '$' + data.live_price.toFixed(2);
+            document.getElementById('wallet-balance').innerText = `Wallet (${marketMode}): $${data.balances[marketMode].toFixed(2)} USDT`;
 
-            document.getElementById('asks-body').innerHTML = data.orderbook.asks.reverse().map(a => `<tr><td class="red">$${a.price}</td><td style="text-align:right;">${a.qty}</td></tr>`).join('');
-            document.getElementById('bids-body').innerHTML = data.orderbook.bids.map(b => `<tr><td class="green">$${b.price}</td><td style="text-align:right;">${b.qty}</td></tr>`).join('');
+            // Orderbook
+            const obRes = await fetch(`/api/market/${symbol}`);
+            const obData = await obRes.json();
+            document.getElementById('asks-body').innerHTML = obData.orderbook.asks.reverse().map(a => `<tr><td class="red">$${a.price}</td><td style="text-align:right;">${a.qty}</td></tr>`).join('');
+            document.getElementById('bids-body').innerHTML = obData.orderbook.bids.map(b => `<tr><td class="green">$${b.price}</td><td style="text-align:right;">${b.qty}</td></tr>`).join('');
 
-            const dashRes = await fetch(`/api/dashboard/${currentSymbol}`);
-            const dash = await dashRes.json();
+            // Positions Table
+            const posBody = document.getElementById('pos-table-body');
+            posBody.innerHTML = data.positions.length ? data.positions.map(p => `
+                <tr>
+                    <td><b>${p.symbol}</b></td><td class="${p.side==='BUY'?'green':'red'}">${p.side} ${p.leverage}x</td>
+                    <td>$${p.entry_price}</td><td>$${p.mark_price}</td><td>$${p.liq_price}</td>
+                    <td class="${p.pnl>=0?'green':'red'}">$${p.pnl} (${p.pnl_pct}%)</td>
+                    <td><button style="background:var(--red); color:#fff; border:none; padding:3px 6px; cursor:pointer;" onclick="closePos('${p.id}')">Close</button></td>
+                </tr>
+            `).join('') : '<tr><td colspan="7" style="text-align:center; color:var(--text-gray);">No Active Positions</td></tr>';
 
-            // Positions
-            const posBody = document.getElementById('positions-body');
-            if(dash.positions.length > 0) {
-                posBody.innerHTML = dash.positions.map(p => `
-                    <tr>
-                        <td><b>${p.symbol}</b></td>
-                        <td class="${p.side === 'BUY' ? 'green' : 'red'}">${p.side} ${p.leverage}x</td>
-                        <td>$${p.entry_price}</td><td>$${p.mark_price}</td><td>$${p.liq_price}</td>
-                        <td class="${p.pnl >= 0 ? 'green' : 'red'}">$${p.pnl} (${p.pnl_pct}%)</td>
-                        <td><button style="background:var(--red); color:#fff; border:none; padding:3px 6px; border-radius:3px; cursor:pointer;" onclick="closePos('${p.id}')">Close</button></td>
-                    </tr>
-                `).join('');
-            } else {
-                posBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--gray);">No active positions</td></tr>';
-            }
-
-            // Pending Orders
-            const ordBody = document.getElementById('orders-body');
-            if(dash.open_orders.length > 0) {
-                ordBody.innerHTML = dash.open_orders.map(o => `
-                    <tr>
-                        <td><b>${o.id}</b></td><td>${o.type}</td><td class="${o.side==='BUY'?'green':'red'}">${o.side}</td>
-                        <td>${o.type==='LIMIT' ? '$'+o.price : 'Stop $'+o.stop_price}</td>
-                        <td>$${o.amount}</td><td class="yellow">${o.status}</td>
-                        <td><button style="background:var(--red); color:#fff; border:none; padding:3px 6px; border-radius:3px; cursor:pointer;" onclick="cancelOrd('${o.id}')">Cancel</button></td>
-                    </tr>
-                `).join('');
-            } else {
-                ordBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--gray);">No open orders pending</td></tr>';
-            }
-
-            // Bots
-            const botsBody = document.getElementById('bots-body');
-            if(dash.bots.length > 0) {
-                botsBody.innerHTML = dash.bots.map(b => `
-                    <tr>
-                        <td><b>${b.id}</b></td><td>${b.type}</td><td>${b.grid_mode}</td>
-                        <td class="${b.direction === 'LONG' ? 'green' : 'red'}">${b.direction}</td>
-                        <td>$${b.investment}</td><td class="green">+$${b.pnl}</td>
-                        <td><span style="background: var(--green); color: #000; padding: 2px 4px; border-radius: 2px; font-weight: bold;">${b.status}</span></td>
-                    </tr>
-                `).join('');
-            } else {
-                botsBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: var(--gray);">No active bots running</td></tr>';
-            }
+            // Bots Table
+            const botBody = document.getElementById('bots-table-body');
+            botBody.innerHTML = data.bots.length ? data.bots.map(b => `
+                <tr>
+                    <td><b>${b.id}</b></td><td>${b.type}</td><td>${b.grid_mode}</td>
+                    <td class="${b.direction==='LONG'?'green':'red'}">${b.direction}</td>
+                    <td>$${b.investment}</td><td class="green">+$${b.pnl}</td>
+                    <td><button style="background:var(--red); color:#fff; border:none; padding:3px 6px; cursor:pointer;" onclick="stopBot('${b.id}')">Stop</button></td>
+                </tr>
+            `).join('') : '<tr><td colspan="7" style="text-align:center; color:var(--text-gray);">No Active Bots Running</td></tr>';
         }
 
         async function placeOrder(side) {
-            const mode = document.getElementById('trade-mode').value;
-            const type = document.getElementById('order-type').value;
-            const price = parseFloat(document.getElementById('trade-price').value) || null;
-            const stopPrice = parseFloat(document.getElementById('trade-stop-price').value) || null;
-            const lev = parseInt(document.getElementById('trade-lev').value);
-            const amt = parseFloat(document.getElementById('trade-amt').value);
-            const tp = parseFloat(document.getElementById('trade-tp').value) || null;
-            const sl = parseFloat(document.getElementById('trade-sl').value) || null;
+            const type = document.getElementById('ord-type').value;
+            const price = parseFloat(document.getElementById('ord-limit-p').value) || null;
+            const stopP = parseFloat(document.getElementById('ord-stop-p').value) || null;
+            const lev = parseInt(document.getElementById('ord-lev').value);
+            const amt = parseFloat(document.getElementById('ord-amt').value);
 
             await fetch('/api/order/execute', {
                 method: 'POST', headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({ symbol: currentSymbol, mode: mode, side: side, order_type: type, price: price, stop_price: stopPrice, amount_usdt: amt, leverage: lev, tp: tp, sl: sl })
+                body: JSON.stringify({ symbol: symbol, mode: marketMode, side: side, order_type: type, price: price, stop_price: stopP, amount_usdt: amt, leverage: lev })
             });
-            syncData();
+            syncLiveTerminal();
         }
 
-        async function closePos(id) {
-            await fetch(`/api/position/close/${id}`, {method: 'POST'});
-            syncData();
+        async function deployBot() {
+            const strat = document.getElementById('bot-strategy').value;
+            const gMode = document.getElementById('bot-grid-mode').value;
+            const dir = document.getElementById('bot-dir').value;
+            const low = parseFloat(document.getElementById('bot-low-p').value) || 60000;
+            const high = parseFloat(document.getElementById('bot-high-p').value) || 75000;
+            const grids = parseInt(document.getElementById('bot-grids').value);
+            const cap = parseFloat(document.getElementById('bot-capital').value);
+
+            await fetch('/api/bot/create', {
+                method: 'POST', headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({ symbol: symbol, mode: marketMode, bot_type: strat, direction: dir, grid_mode: gMode, lower_price: low, upper_price: high, grid_count: grids, investment: cap })
+            });
+            switchDashTab('bots');
+            syncLiveTerminal();
         }
 
-        async function cancelOrd(id) {
-            await fetch(`/api/order/cancel/${id}`, {method: 'POST'});
-            syncData();
+        async function stopBot(id) {
+            await fetch(`/api/bot/stop/${id}`, {method: 'POST'});
+            syncLiveTerminal();
         }
 
-        initTradingView('BINANCE:BTCUSDT');
-        setInterval(syncData, 1200);
-        syncData();
+        function openAPIModal() {
+            const key = prompt("Enter Binance Live API Key:");
+            const sec = prompt("Enter Binance Live API Secret:");
+            if (key) {
+                fetch('/api/config/keys', {
+                    method: 'POST', headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({ api_key: key, api_secret: sec })
+                }).then(() => location.reload());
+            }
+        }
+
+        initTVChart();
+        setInterval(syncLiveTerminal, 1500);
+        syncLiveTerminal();
     </script>
 </body>
 </html>
